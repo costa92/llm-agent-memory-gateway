@@ -3,9 +3,9 @@ module github.com/costa92/llm-agent-memory-gateway
 go 1.26.0
 
 require (
-	github.com/costa92/llm-agent-memory-contract v0.0.0
-	github.com/costa92/llm-agent-memory-postgres v0.0.0
-	github.com/costa92/llm-agent-rag v1.0.5
+	github.com/costa92/llm-agent-memory-contract v0.1.0
+	github.com/costa92/llm-agent-memory-postgres v0.1.0
+	github.com/costa92/llm-agent-rag v1.9.0
 	github.com/jackc/pgx/v5 v5.9.2
 )
 
@@ -20,9 +20,3 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 )
-
-replace github.com/costa92/llm-agent-memory-contract => ../llm-agent-memory-contract
-
-replace github.com/costa92/llm-agent-memory-postgres => ../llm-agent-memory-postgres
-
-replace github.com/costa92/llm-agent-rag => ../llm-agent-rag
