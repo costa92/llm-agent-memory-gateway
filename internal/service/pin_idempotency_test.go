@@ -16,10 +16,12 @@ import (
 // version on mutation, and makes deleted/disabled records invisible to
 // GetRecord (matching the real backend's visibility filter).
 type recordingPinBackend struct {
-	records     map[string]corememory.MemoryRecord
-	pinCalls    int
-	unpinCalls  int
-	enableCalls int
+	records      map[string]corememory.MemoryRecord
+	pinCalls     int
+	unpinCalls   int
+	enableCalls  int
+	disableCalls int
+	deleteCalls  int
 }
 
 func newRecordingPinBackend() *recordingPinBackend {
@@ -34,6 +36,17 @@ func (f *recordingPinBackend) GetRecord(_ context.Context, _ string, memoryID st
 	return rec, nil
 }
 
+// GetRecordIncludingHidden mirrors the real backend's unfiltered read: it
+// returns the stored record even when Deleted or Disabled, and ErrNotFound only
+// when the record is truly absent.
+func (f *recordingPinBackend) GetRecordIncludingHidden(_ context.Context, _ string, memoryID string) (corememory.MemoryRecord, error) {
+	rec, ok := f.records[memoryID]
+	if !ok {
+		return corememory.MemoryRecord{}, pgmemory.ErrNotFound
+	}
+	return rec, nil
+}
+
 func (f *recordingPinBackend) WriteRecord(context.Context, corememory.WriteRecordInput) (corememory.WriteRecordResult, error) {
 	return corememory.WriteRecordResult{}, nil
 }
@@ -42,8 +55,19 @@ func (f *recordingPinBackend) PatchRecord(context.Context, corememory.PatchRecor
 	return corememory.PatchRecordResult{}, nil
 }
 
-func (f *recordingPinBackend) DeleteRecord(context.Context, corememory.DeleteRecordInput) (corememory.DeleteRecordResult, error) {
-	return corememory.DeleteRecordResult{}, nil
+func (f *recordingPinBackend) DeleteRecord(_ context.Context, in corememory.DeleteRecordInput) (corememory.DeleteRecordResult, error) {
+	f.deleteCalls++
+	rec, ok := f.records[in.MemoryID]
+	if !ok {
+		return corememory.DeleteRecordResult{}, pgmemory.ErrNotFound
+	}
+	if rec.Version != in.ExpectedVersion {
+		return corememory.DeleteRecordResult{}, pgmemory.ErrVersionConflict
+	}
+	rec.Deleted = true
+	rec.Version++
+	f.records[in.MemoryID] = rec
+	return corememory.DeleteRecordResult{MemoryID: rec.MemoryID, Version: rec.Version, Record: rec}, nil
 }
 
 func (f *recordingPinBackend) PinRecord(_ context.Context, in corememory.PinRecordInput) (corememory.PinRecordResult, error) {
@@ -67,6 +91,9 @@ func (f *recordingPinBackend) PinRecord(_ context.Context, in corememory.PinReco
 
 func (f *recordingPinBackend) DisableRecord(_ context.Context, in corememory.DisableRecordInput) (corememory.DisableRecordResult, error) {
 	f.enableCalls++
+	if in.Disabled {
+		f.disableCalls++
+	}
 	rec, ok := f.records[in.MemoryID]
 	if !ok {
 		return corememory.DisableRecordResult{}, pgmemory.ErrNotFound

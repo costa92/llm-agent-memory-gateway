@@ -19,6 +19,10 @@ func (f *fakeRecordStore) GetRecord(context.Context, string, string) (corememory
 	return corememory.MemoryRecord{}, nil
 }
 
+func (f *fakeRecordStore) GetRecordIncludingHidden(context.Context, string, string) (corememory.MemoryRecord, error) {
+	return corememory.MemoryRecord{}, nil
+}
+
 func (f *fakeRecordStore) WriteRecord(context.Context, corememory.WriteRecordInput) (corememory.WriteRecordResult, error) {
 	return corememory.WriteRecordResult{}, nil
 }
@@ -45,6 +49,17 @@ type fakeHydrationStore struct {
 }
 
 func (f *fakeHydrationStore) GetRecord(_ context.Context, _ string, memoryID string) (corememory.MemoryRecord, error) {
+	if f.err != nil {
+		return corememory.MemoryRecord{}, f.err
+	}
+	record, ok := f.records[memoryID]
+	if !ok {
+		return corememory.MemoryRecord{}, pgmemory.ErrNotFound
+	}
+	return record, nil
+}
+
+func (f *fakeHydrationStore) GetRecordIncludingHidden(_ context.Context, _ string, memoryID string) (corememory.MemoryRecord, error) {
 	if f.err != nil {
 		return corememory.MemoryRecord{}, f.err
 	}

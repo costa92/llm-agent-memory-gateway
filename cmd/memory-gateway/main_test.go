@@ -55,6 +55,10 @@ func (fakeRecordStore) GetRecord(context.Context, string, string) (corememory.Me
 	return corememory.MemoryRecord{}, nil
 }
 
+func (fakeRecordStore) GetRecordIncludingHidden(context.Context, string, string) (corememory.MemoryRecord, error) {
+	return corememory.MemoryRecord{}, nil
+}
+
 func (fakeRecordStore) WriteRecord(context.Context, corememory.WriteRecordInput) (corememory.WriteRecordResult, error) {
 	return corememory.WriteRecordResult{}, nil
 }

@@ -29,6 +29,10 @@ func (f *fakeSessionWorkingStore) GetRecord(context.Context, string, string) (co
 	return corememory.MemoryRecord{}, nil
 }
 
+func (f *fakeSessionWorkingStore) GetRecordIncludingHidden(context.Context, string, string) (corememory.MemoryRecord, error) {
+	return corememory.MemoryRecord{}, nil
+}
+
 func (f *fakeSessionWorkingStore) WriteRecord(context.Context, corememory.WriteRecordInput) (corememory.WriteRecordResult, error) {
 	return corememory.WriteRecordResult{}, nil
 }

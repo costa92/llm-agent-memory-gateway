@@ -220,6 +220,9 @@ type fakeBackendForTransport struct{}
 func (fakeBackendForTransport) GetRecord(context.Context, string, string) (corememory.MemoryRecord, error) {
 	return corememory.MemoryRecord{}, nil
 }
+func (fakeBackendForTransport) GetRecordIncludingHidden(context.Context, string, string) (corememory.MemoryRecord, error) {
+	return corememory.MemoryRecord{}, nil
+}
 func (fakeBackendForTransport) WriteRecord(context.Context, corememory.WriteRecordInput) (corememory.WriteRecordResult, error) {
 	return corememory.WriteRecordResult{}, nil
 }
@@ -266,6 +269,17 @@ func (b *statefulBackendForTransport) GetRecord(_ context.Context, tenantID, mem
 
 	record, ok := b.records[memoryID]
 	if !ok || record.TenantID != tenantID || record.Deleted {
+		return corememory.MemoryRecord{}, pgmemory.ErrNotFound
+	}
+	return record, nil
+}
+
+func (b *statefulBackendForTransport) GetRecordIncludingHidden(_ context.Context, tenantID, memoryID string) (corememory.MemoryRecord, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	record, ok := b.records[memoryID]
+	if !ok || record.TenantID != tenantID {
 		return corememory.MemoryRecord{}, pgmemory.ErrNotFound
 	}
 	return record, nil
