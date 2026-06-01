@@ -1,0 +1,19 @@
+{
+  "expected_version": 9,
+  "idempotency_key": "idem_patch_1",
+  "patch": {
+    "category": "project",
+    "content": "User wants API contract drafts before DB schema.",
+    "importance": 0.97,
+    "tags": [
+      "workflow",
+      "preference"
+    ]
+  },
+  "scope": {
+    "project_id": "proj-x",
+    "session_id": "sess-9",
+    "tenant_id": "tenant-a",
+    "user_id": "user-1"
+  }
+}

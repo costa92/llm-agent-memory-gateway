@@ -1,0 +1,30 @@
+{
+  "hits": [
+    {
+      "category": "profile",
+      "content": "User prefers concise technical answers.",
+      "disabled": false,
+      "kind": "semantic",
+      "memory_id": "mem_123",
+      "metadata": {
+        "matched_by": "long_term_unified",
+        "token_cost_estimate": 42
+      },
+      "pinned": true,
+      "score": 0.95,
+      "source": "user_saved",
+      "tags": [
+        "preference",
+        "style"
+      ],
+      "version": 7
+    }
+  ],
+  "trace": {
+    "cache_level": "l1",
+    "consistency_level": "eventual",
+    "memory_token_budget": 400,
+    "returned_token_estimate": 42,
+    "stale_served": true
+  }
+}

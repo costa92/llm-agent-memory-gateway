@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "memory_conflict",
+    "details": {
+      "current_version": 5,
+      "expected_version": 4,
+      "memory_id": "mem_123"
+    },
+    "message": "expected_version does not match current version",
+    "request_id": "req_123",
+    "retryable": false
+  }
+}
