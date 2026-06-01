@@ -74,3 +74,27 @@ documented in this file.
 - Decision-trace persistence is best-effort with bounded loss accounting
   through `trace_dropped_total`. The request path never blocks on the sink.
 - No SDK changes; no new event types; no new sibling modules.
+
+## [0.1.0] - 2026-05-26
+
+### Added
+
+- Initial HTTP gateway and service-composition module split out from the SDK,
+  fronting durable memory:
+  - HTTP API surface for memory write/recall and operator endpoints.
+  - service composition wiring the Postgres backend, RAG vector store, and
+    relay together.
+  - `GET /metrics` and runtime configuration via `LLM_AGENT_MEMORY_GATEWAY_*`
+    environment variables.
+
+### Dependencies
+
+- `github.com/costa92/llm-agent-memory` for SDK-owned durable abstractions
+- `github.com/costa92/llm-agent-memory-postgres` for the durable backend + relay
+- `github.com/costa92/llm-agent-memory-contract` for backend-neutral contract types
+- `github.com/costa92/llm-agent-rag` for the vector store backing recall
+
+### Notes
+
+- Gateway HTTP and service composition are intentionally separate from the SDK,
+  Postgres, and worker modules.
