@@ -1,0 +1,10 @@
+{
+  "consistency_level": "strong",
+  "expected_version": 9,
+  "scope": {
+    "project_id": "proj-x",
+    "session_id": "sess-9",
+    "tenant_id": "tenant-a",
+    "user_id": "user-1"
+  }
+}

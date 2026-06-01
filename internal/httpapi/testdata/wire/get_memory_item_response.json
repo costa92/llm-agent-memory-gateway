@@ -1,0 +1,15 @@
+{
+  "category": "profile",
+  "content": "User prefers concise technical answers.",
+  "disabled": false,
+  "importance": 0.95,
+  "kind": "semantic",
+  "memory_id": "mem_123",
+  "pinned": true,
+  "source": "user_saved",
+  "tags": [
+    "preference",
+    "style"
+  ],
+  "version": 7
+}

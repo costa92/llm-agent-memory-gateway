@@ -1,0 +1,21 @@
+{
+  "idempotency_key": "idem_abc_123",
+  "record": {
+    "category": "project",
+    "content": "User wants API contract drafts before DB schema.",
+    "importance": 0.95,
+    "kind": "semantic",
+    "pinned": true,
+    "source": "user_saved",
+    "tags": [
+      "workflow",
+      "preference"
+    ]
+  },
+  "scope": {
+    "project_id": "proj-x",
+    "session_id": "sess-9",
+    "tenant_id": "tenant-a",
+    "user_id": "user-1"
+  }
+}

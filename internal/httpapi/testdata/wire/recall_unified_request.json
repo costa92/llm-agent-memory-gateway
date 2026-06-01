@@ -1,0 +1,15 @@
+{
+  "allow_stale_cache": true,
+  "consistency_level": "eventual",
+  "debug": true,
+  "memory_token_budget": 400,
+  "query": "export document as pdf",
+  "scope": {
+    "project_id": "proj-x",
+    "session_id": "sess-9",
+    "tenant_id": "tenant-a",
+    "user_id": "user-1"
+  },
+  "token_budget": 1200,
+  "top_k": 8
+}

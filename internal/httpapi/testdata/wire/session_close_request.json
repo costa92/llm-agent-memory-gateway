@@ -1,0 +1,9 @@
+{
+  "mode": "expire_working",
+  "scope": {
+    "project_id": "proj-x",
+    "session_id": "sess-9",
+    "tenant_id": "tenant-a",
+    "user_id": "user-1"
+  }
+}
