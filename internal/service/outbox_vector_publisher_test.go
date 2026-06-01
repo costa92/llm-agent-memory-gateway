@@ -46,6 +46,13 @@ func (f *fakePublisherRecordStore) GetRecord(_ context.Context, _ string, _ stri
 	return f.record, nil
 }
 
+func (f *fakePublisherRecordStore) GetRecordIncludingHidden(_ context.Context, _ string, _ string) (corememory.MemoryRecord, error) {
+	if f.err != nil {
+		return corememory.MemoryRecord{}, f.err
+	}
+	return f.record, nil
+}
+
 func (f *fakePublisherRecordStore) WriteRecord(context.Context, corememory.WriteRecordInput) (corememory.WriteRecordResult, error) {
 	return corememory.WriteRecordResult{}, nil
 }

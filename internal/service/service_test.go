@@ -36,6 +36,20 @@ func (f *fakeBackend) GetRecord(_ context.Context, _ string, memoryID string) (c
 	return corememory.MemoryRecord{}, pgmemory.ErrNotFound
 }
 
+func (f *fakeBackend) GetRecordIncludingHidden(_ context.Context, _ string, memoryID string) (corememory.MemoryRecord, error) {
+	if f.getErr != nil {
+		return corememory.MemoryRecord{}, f.getErr
+	}
+	if f.records == nil {
+		return corememory.MemoryRecord{}, pgmemory.ErrNotFound
+	}
+	record, ok := f.records[memoryID]
+	if ok {
+		return record, nil
+	}
+	return corememory.MemoryRecord{}, pgmemory.ErrNotFound
+}
+
 func (f *fakeBackend) WriteRecord(_ context.Context, in corememory.WriteRecordInput) (corememory.WriteRecordResult, error) {
 	f.writeCalls++
 	f.writeInput = in

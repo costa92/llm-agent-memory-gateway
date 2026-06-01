@@ -443,6 +443,24 @@ func (s *Service) terminalStateShortCircuit(ctx context.Context, scope authz.Sco
 	return corememory.MemoryRecord{}, false
 }
 
+// terminalHiddenStateShortCircuit mirrors terminalStateShortCircuit but reads
+// through GetRecordIncludingHidden so disable/delete replays can reconcile
+// against records the visibility filter would hide (Deleted/Disabled). It
+// returns (record, true) only when the record is already in the desired
+// terminal state AND the caller's expectedVersion is not ahead of the stored
+// version. On any read error (including ErrNotFound for truly-absent records)
+// it returns ok=false so the caller falls through to the backend mutation.
+func (s *Service) terminalHiddenStateShortCircuit(ctx context.Context, scope authz.Scope, memoryID string, expectedVersion int64, desired func(corememory.MemoryRecord) bool) (corememory.MemoryRecord, bool) {
+	record, err := s.backend.GetRecordIncludingHidden(ctx, scope.TenantID, memoryID)
+	if err != nil {
+		return corememory.MemoryRecord{}, false
+	}
+	if desired(record) && expectedVersion <= record.Version {
+		return record, true
+	}
+	return corememory.MemoryRecord{}, false
+}
+
 func (s *Service) UnpinMemory(ctx context.Context, authScope authz.Scope, memoryID string, req httpapi.PinMemoryRequest) (httpapi.PinMemoryResponse, error) {
 	if err := s.ensureWritable(); err != nil {
 		return httpapi.PinMemoryResponse{}, err
@@ -487,6 +505,15 @@ func (s *Service) DisableMemory(ctx context.Context, authScope authz.Scope, memo
 	}
 
 	scope := mergeScope(authScope, req.Scope)
+	if record, ok := s.terminalHiddenStateShortCircuit(ctx, scope, memoryID, req.ExpectedVersion, func(r corememory.MemoryRecord) bool {
+		return r.Disabled && !r.Deleted
+	}); ok {
+		return httpapi.DisableMemoryResponse{
+			MemoryID: record.MemoryID,
+			Version:  record.Version,
+			Disabled: true,
+		}, nil
+	}
 	result, err := s.backend.DisableRecord(ctx, corememory.DisableRecordInput{
 		TenantID:        scope.TenantID,
 		MemoryID:        memoryID,
@@ -548,6 +575,15 @@ func (s *Service) DeleteMemory(ctx context.Context, authScope authz.Scope, memor
 	}
 
 	scope := mergeScope(authScope, req.Scope)
+	if record, ok := s.terminalHiddenStateShortCircuit(ctx, scope, memoryID, req.ExpectedVersion, func(r corememory.MemoryRecord) bool {
+		return r.Deleted
+	}); ok {
+		return httpapi.DeleteMemoryResponse{
+			MemoryID: record.MemoryID,
+			Deleted:  true,
+			Version:  record.Version,
+		}, nil
+	}
 	result, err := s.backend.DeleteRecord(ctx, corememory.DeleteRecordInput{
 		TenantID:        scope.TenantID,
 		MemoryID:        memoryID,
