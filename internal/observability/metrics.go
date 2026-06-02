@@ -55,6 +55,11 @@ type Snapshot struct {
 	// not labelled by tenant_bucket because the failure is global to the
 	// query.
 	StorageCronFailuresTotal uint64
+
+	// MemoryHardDeletedTotal counts rows physically removed by the hard-delete
+	// GC (D4). Global (no tenant_bucket) — a maintenance counter like the cron
+	// failure count above.
+	MemoryHardDeletedTotal uint64
 }
 
 type Metrics struct {
@@ -71,6 +76,7 @@ type Metrics struct {
 	outboxIgnored   atomic.Int64
 
 	storageCronFailures atomic.Uint64
+	memoryHardDeleted   atomic.Uint64
 
 	// Per-bucket counters. mu guards map structure; the *atomic.Uint64 values
 	// themselves are lock-free once their map entry exists, so the hot path
@@ -177,6 +183,10 @@ func (m *Metrics) AddWorkingPromoted(tenantBucket string, n uint64) {
 // tenant_bucket label — the failure is global to the cron tick.
 func (m *Metrics) AddStorageCronFailure() { m.storageCronFailures.Add(1) }
 
+// AddMemoryHardDeleted increments the count of rows physically removed by the
+// hard-delete GC (D4). Global — the purge is set-based across tenants.
+func (m *Metrics) AddMemoryHardDeleted(n uint64) { m.memoryHardDeleted.Add(n) }
+
 // SetTraceDropSource wires the sink's drop counters as the source of truth for
 // the trace_dropped_total exposition. Passing nil restores the zero-snapshot
 // default. Safe to call concurrently with Handler().
@@ -241,6 +251,7 @@ func (m *Metrics) Snapshot() Snapshot {
 		OutboxProjectionFailedTotal:    m.outboxFailed.Load(),
 		OutboxProjectionIgnoredTotal:   m.outboxIgnored.Load(),
 		StorageCronFailuresTotal:       m.storageCronFailures.Load(),
+		MemoryHardDeletedTotal:         m.memoryHardDeleted.Load(),
 	}
 	m.mu.RLock()
 	snap.EmbeddingRequestTotal = copyBuckets(m.embeddingRequest)
@@ -337,6 +348,7 @@ func (m *Metrics) Handler() http.Handler {
 			fmt.Sprintf(`trace_dropped_total{reason="db_error"} %d`, snap.TraceDropped.DBError),
 			fmt.Sprintf(`trace_dropped_total{reason="shutdown"} %d`, snap.TraceDropped.Shutdown),
 			fmt.Sprintf("storage_cron_failures_total %d", snap.StorageCronFailuresTotal),
+			fmt.Sprintf("memory_hard_deleted_total %d", snap.MemoryHardDeletedTotal),
 		)
 
 		_, _ = fmt.Fprint(w, strings.Join(lines, "\n"))

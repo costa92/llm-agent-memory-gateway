@@ -183,6 +183,32 @@ func buildHandler(ctx context.Context, logger *slog.Logger, cfg config.Config) (
 		})
 	}
 
+	// Hard-delete GC (D4): physically remove rows soft-deleted longer ago than
+	// the retention window. Off by default — it is an irreversible delete; the
+	// rows are already invisible to queries, so this only reclaims storage.
+	if cfg.HardDeleteGCEnabled {
+		gc := service.NewHardDeleteGCCron(service.HardDeleteGCCronConfig{
+			Purge:     buildPurgeSoftDeleted(pool, memoryRecordTableName),
+			Retention: cfg.HardDeleteRetention,
+			Interval:  cfg.HardDeleteGCInterval,
+			OnError: func(err error) {
+				logger.Warn("hard-delete GC tick failed", "error", err)
+			},
+			OnPurge: func(deleted int64) {
+				metrics.AddMemoryHardDeleted(uint64(deleted))
+				logger.Info("hard-delete GC purged soft-deleted rows", "count", deleted)
+			},
+		})
+		gcCtx, gcCancel := context.WithCancel(context.Background())
+		go gc.Run(gcCtx)
+		cleanupFns = append(cleanupFns, func() {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), cfg.TraceSinkShutdownTimeout)
+			defer stopCancel()
+			gc.Stop(stopCtx)
+			gcCancel()
+		})
+	}
+
 	if cfg.VectorEnabled {
 		projector := buildVectorProjector(cfg, vectorSource, metrics)
 		if projector != nil {
@@ -499,6 +525,22 @@ func buildIdleSessionsQuery(exec storageQueryExecutor, memoryTable string) func(
 			out = append(out, s)
 		}
 		return out, rows.Err()
+	}
+}
+
+// buildPurgeSoftDeleted returns a closure that physically removes memory_record
+// rows soft-deleted before cutoff, returning the number removed. memory_event /
+// outbox rows have no FK to memory_record and are intentionally left as history.
+func buildPurgeSoftDeleted(pool *pgxpool.Pool, memoryTable string) func(ctx context.Context, cutoff time.Time) (int64, error) {
+	return func(ctx context.Context, cutoff time.Time) (int64, error) {
+		tag, err := pool.Exec(ctx, fmt.Sprintf(
+			`DELETE FROM %s WHERE deleted = TRUE AND deleted_at IS NOT NULL AND deleted_at < $1`,
+			memoryTable,
+		), cutoff)
+		if err != nil {
+			return 0, err
+		}
+		return tag.RowsAffected(), nil
 	}
 }
 

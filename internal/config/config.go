@@ -22,6 +22,8 @@ const (
 	defaultTraceSinkShutdown   = 5 * time.Second
 	defaultStorageMetricsCycle = 5 * time.Minute
 	defaultSessionReaperCycle  = 5 * time.Minute
+	defaultHardDeleteRetention = 30 * 24 * time.Hour
+	defaultHardDeleteGCCycle   = time.Hour
 	defaultRelayLeaseTTL       = 180 * time.Second
 	defaultRelayMaxAttempts    = 5
 	defaultRelayBatchSize      = 100
@@ -82,6 +84,23 @@ type Config struct {
 	// `LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_INTERVAL`.
 	SessionReaperInterval time.Duration
 
+	// HardDeleteGCEnabled turns on the hard-delete GC (D4): a background job
+	// that physically removes rows soft-deleted longer ago than
+	// HardDeleteRetention. Soft-deleted rows are already invisible to queries,
+	// so this only reclaims storage. **Default false** — it is an irreversible
+	// physical delete; operators opt in. Env
+	// `LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_ENABLED`.
+	HardDeleteGCEnabled bool
+
+	// HardDeleteRetention is how long a soft-deleted row is kept before the GC
+	// physically removes it. Default 30 days (720h). Env
+	// `LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_RETENTION`.
+	HardDeleteRetention time.Duration
+
+	// HardDeleteGCInterval is how often the GC runs. Default 1h. Env
+	// `LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_INTERVAL`.
+	HardDeleteGCInterval time.Duration
+
 	// TraceRetentionEnabled is a forward-looking flag (M8) for operator-side
 	// retention of memory_decision_trace rows. v1 (M7) leaves this off and
 	// treats retention as an operator obligation — see spec OD-5. Default
@@ -131,6 +150,8 @@ func LoadFromEnv() (Config, error) {
 		StorageMetricsInterval:   defaultStorageMetricsCycle,
 		SessionReaperEnabled:     true,
 		SessionReaperInterval:    defaultSessionReaperCycle,
+		HardDeleteRetention:      defaultHardDeleteRetention,
+		HardDeleteGCInterval:     defaultHardDeleteGCCycle,
 		RelayLeaseTTL:            defaultRelayLeaseTTL,
 		RelayMaxAttempts:         defaultRelayMaxAttempts,
 		RelayBatchSize:           defaultRelayBatchSize,
@@ -299,6 +320,36 @@ func LoadFromEnv() (Config, error) {
 			return Config{}, errors.New("LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_INTERVAL must be > 0")
 		}
 		cfg.SessionReaperInterval = interval
+	}
+
+	if gcEnabledValue := os.Getenv("LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_ENABLED"); gcEnabledValue != "" {
+		gcEnabled, err := strconv.ParseBool(gcEnabledValue)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_ENABLED: %w", err)
+		}
+		cfg.HardDeleteGCEnabled = gcEnabled
+	}
+
+	if gcRetentionValue := os.Getenv("LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_RETENTION"); gcRetentionValue != "" {
+		retention, err := time.ParseDuration(gcRetentionValue)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_RETENTION: %w", err)
+		}
+		if retention <= 0 {
+			return Config{}, errors.New("LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_RETENTION must be > 0")
+		}
+		cfg.HardDeleteRetention = retention
+	}
+
+	if gcIntervalValue := os.Getenv("LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_INTERVAL"); gcIntervalValue != "" {
+		interval, err := time.ParseDuration(gcIntervalValue)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_INTERVAL: %w", err)
+		}
+		if interval <= 0 {
+			return Config{}, errors.New("LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_INTERVAL must be > 0")
+		}
+		cfg.HardDeleteGCInterval = interval
 	}
 
 	if retentionValue := os.Getenv("LLM_AGENT_MEMORY_GATEWAY_TRACE_RETENTION"); retentionValue != "" {

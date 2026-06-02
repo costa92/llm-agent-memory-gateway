@@ -75,6 +75,21 @@ documented in this file.
   through `trace_dropped_total`. The request path never blocks on the sink.
 - No SDK changes; no new event types; no new sibling modules.
 
+## [0.4.0] - 2026-06-02
+
+### Added
+
+- **Hard-delete GC (M8 D4).** A background `HardDeleteGCCron` physically
+  removes `memory_record` rows that have been soft-deleted (`deleted=TRUE`) for
+  longer than the retention window, reclaiming storage. Soft-deleted rows are
+  already invisible to every query, so this changes no behaviour;
+  `memory_event` / outbox rows have no FK to `memory_record` and are left as
+  history. New global counter `memory_hard_deleted_total`. **Off by default**
+  (irreversible physical delete). Config:
+  `LLM_AGENT_MEMORY_GATEWAY_HARD_DELETE_GC_ENABLED` (default false),
+  `..._HARD_DELETE_RETENTION` (default 30d), `..._HARD_DELETE_GC_INTERVAL`
+  (default 1h).
+
 ## [0.3.1] - 2026-06-02
 
 ### Fixed
