@@ -293,6 +293,9 @@ func (s *Service) WriteMemory(ctx context.Context, authScope authz.Scope, req ht
 	}
 
 	scope := mergeScope(authScope, req.Scope)
+	if err := s.ensureSessionOpen(ctx, scope); err != nil {
+		return httpapi.WriteMemoryResponse{}, err
+	}
 	writeInput := corememory.WriteRecordInput{
 		TenantID:       scope.TenantID,
 		IdempotencyKey: req.IdempotencyKey,
@@ -336,6 +339,9 @@ func (s *Service) PatchMemory(ctx context.Context, authScope authz.Scope, memory
 	}
 
 	scope := mergeScope(authScope, req.Scope)
+	if err := s.ensureSessionOpen(ctx, scope); err != nil {
+		return httpapi.PatchMemoryResponse{}, err
+	}
 
 	if strings.TrimSpace(req.IdempotencyKey) != "" && s.idempotencyStore != nil {
 		requestHash := hashPatchRequest(scope, memoryID, req)
@@ -421,6 +427,9 @@ func (s *Service) PinMemory(ctx context.Context, authScope authz.Scope, memoryID
 	}
 
 	scope := mergeScope(authScope, req.Scope)
+	if err := s.ensureSessionOpen(ctx, scope); err != nil {
+		return httpapi.PinMemoryResponse{}, err
+	}
 	if record, ok := s.terminalStateShortCircuit(ctx, scope, memoryID, req.ExpectedVersion, func(r corememory.MemoryRecord) bool {
 		return r.Pinned
 	}); ok {
@@ -528,6 +537,9 @@ func (s *Service) DisableMemory(ctx context.Context, authScope authz.Scope, memo
 	}
 
 	scope := mergeScope(authScope, req.Scope)
+	if err := s.ensureSessionOpen(ctx, scope); err != nil {
+		return httpapi.DisableMemoryResponse{}, err
+	}
 	if record, ok := s.terminalHiddenStateShortCircuit(ctx, scope, memoryID, req.ExpectedVersion, func(r corememory.MemoryRecord) bool {
 		return r.Disabled && !r.Deleted
 	}); ok {
@@ -598,6 +610,9 @@ func (s *Service) DeleteMemory(ctx context.Context, authScope authz.Scope, memor
 	}
 
 	scope := mergeScope(authScope, req.Scope)
+	if err := s.ensureSessionOpen(ctx, scope); err != nil {
+		return httpapi.DeleteMemoryResponse{}, err
+	}
 	if record, ok := s.terminalHiddenStateShortCircuit(ctx, scope, memoryID, req.ExpectedVersion, func(r corememory.MemoryRecord) bool {
 		return r.Deleted
 	}); ok {
@@ -859,6 +874,20 @@ func (s *Service) validateSessionState(state SessionState, ok bool, now time.Tim
 		})
 	}
 	return nil
+}
+
+// ensureSessionOpen rejects a mutation whose scope targets a session that is
+// closed or expired, so a closed session accepts no further writes (D8). It is
+// the write-side counterpart to the read-side check already performed in
+// RecallUnified, and applies the same validateSessionState rule: a scope with
+// no registered session passes (validateSessionState returns nil when absent),
+// so sessionless writes are unaffected.
+func (s *Service) ensureSessionOpen(ctx context.Context, scope authz.Scope) error {
+	state, ok, err := s.sessionRegistry.Get(ctx, scope)
+	if err != nil {
+		return translateBackendError(err)
+	}
+	return s.validateSessionState(state, ok, time.Now().UTC())
 }
 
 func (s *Service) isSessionExpired(state SessionState, now time.Time) bool {
