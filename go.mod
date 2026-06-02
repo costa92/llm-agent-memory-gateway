@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/costa92/llm-agent-memory-contract v0.2.0
-	github.com/costa92/llm-agent-memory-postgres v0.1.0
+	github.com/costa92/llm-agent-memory-postgres v0.1.1
 	github.com/costa92/llm-agent-rag v1.9.0
 	github.com/jackc/pgx/v5 v5.9.2
 )

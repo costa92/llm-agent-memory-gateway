@@ -75,6 +75,45 @@ documented in this file.
   through `trace_dropped_total`. The request path never blocks on the sink.
 - No SDK changes; no new event types; no new sibling modules.
 
+## [0.3.1] - 2026-06-02
+
+### Fixed
+
+- Bumped `llm-agent-memory-postgres` to `v0.1.1`, pulling in the `ResolveDedupe`
+  first-writer race fix (C1). The wired session closer and reaper both go
+  through `ResolveDedupe`, so this is required for the fix to be in the gateway
+  binary (it previously pinned the buggy `v0.1.0`).
+
+## [0.3.0] - 2026-06-02
+
+### Added
+
+- **Orphaned-session reaper (M8 D6).** A background `SessionReaperCron`
+  periodically reclaims the working memory of sessions that went idle past
+  `SessionIdleTTL` but were never explicitly closed — keyed off the working
+  records (not session-state, which is only written by the heartbeat/close
+  endpoints). Config: `LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_ENABLED`
+  (default true) and `..._SESSION_REAPER_INTERVAL` (default 5m).
+
+## [0.2.0] - 2026-06-02
+
+### Added
+
+- **Working-memory session lifecycle enablement (M8).** Wired the
+  `DurableSessionCloser` in production (was a no-op): `POST /sessions/{id}/close`
+  now expires/promotes the session's working records. New tenant-bucketed
+  metrics `working_expired_total`, `working_dropped_before_use_total`,
+  `working_promoted_total`.
+
+### Changed
+
+- Promotion eligibility / threshold / dedupe-key now come from
+  `llm-agent-memory-contract` `v0.2.0` instead of gateway-local copies (D3).
+- **Write-API semantic change (D8):** `WriteMemory` / `PatchMemory` /
+  `PinMemory` / `DisableMemory` / `DeleteMemory` now return `403` for a closed
+  session (previously silent success), matching the read path. Sessionless
+  writes are unaffected.
+
 ## [0.1.0] - 2026-05-26
 
 ### Added
