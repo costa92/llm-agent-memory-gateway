@@ -7,6 +7,7 @@ type WorkingLifecycleObservation struct {
 	Mode             string
 	Expired          int
 	DroppedBeforeUse int
+	Promoted         int
 }
 
 type WorkingLifecycleObserver interface {

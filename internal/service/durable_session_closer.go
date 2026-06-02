@@ -50,12 +50,16 @@ func (c *DurableSessionCloser) CloseSession(ctx context.Context, scope authz.Sco
 
 	expired := 0
 	droppedBeforeUse := 0
+	promoted := 0
 	for _, item := range records {
 		switch mode {
 		case "promote_and_expire":
-			handled, err := c.promoteIfEligible(ctx, item)
+			handled, didPromote, err := c.promoteIfEligible(ctx, item)
 			if err != nil {
 				return err
+			}
+			if didPromote {
+				promoted++
 			}
 			if handled {
 				continue
@@ -74,21 +78,27 @@ func (c *DurableSessionCloser) CloseSession(ctx context.Context, scope authz.Sco
 		}
 	}
 
-	if expired > 0 || droppedBeforeUse > 0 {
+	if expired > 0 || droppedBeforeUse > 0 || promoted > 0 {
 		c.observer.ObserveWorkingLifecycle(ctx, WorkingLifecycleObservation{
 			TenantID:         scope.TenantID,
 			Mode:             mode,
 			Expired:          expired,
 			DroppedBeforeUse: droppedBeforeUse,
+			Promoted:         promoted,
 		})
 	}
 	return nil
 }
 
-func (c *DurableSessionCloser) promoteIfEligible(ctx context.Context, item SessionWorkingRecord) (bool, error) {
+// promoteIfEligible reports handled (the record was dealt with by the promote
+// path, so the caller must NOT expire it) and promoted (a Promote actually
+// succeeded). A record that is eligible but lost a dedupe race, or whose
+// promote went stale, is handled-but-not-promoted: it is neither expired nor
+// counted as a promotion.
+func (c *DurableSessionCloser) promoteIfEligible(ctx context.Context, item SessionWorkingRecord) (handled bool, promoted bool, err error) {
 	record := item.Record
 	if !corememory.PromotionEligible(record) || strings.TrimSpace(item.LatestEventID) == "" {
-		return false, nil
+		return false, false, nil
 	}
 
 	result, err := c.store.ResolveDedupe(ctx, corememory.ResolveDedupeInput{
@@ -98,12 +108,12 @@ func (c *DurableSessionCloser) promoteIfEligible(ctx context.Context, item Sessi
 	})
 	if err != nil {
 		if isSessionCloseStale(err) {
-			return true, nil
+			return true, false, nil
 		}
-		return false, err
+		return false, false, err
 	}
 	if result.Action != corememory.DedupeNoCollision || result.WinnerID != record.MemoryID {
-		return true, nil
+		return true, false, nil
 	}
 
 	_, err = c.store.Promote(ctx, corememory.PromoteRecordInput{
@@ -116,11 +126,11 @@ func (c *DurableSessionCloser) promoteIfEligible(ctx context.Context, item Sessi
 	})
 	if err != nil {
 		if isSessionCloseStale(err) {
-			return true, nil
+			return true, false, nil
 		}
-		return false, err
+		return false, false, err
 	}
-	return true, nil
+	return true, true, nil
 }
 
 func (c *DurableSessionCloser) expireWorking(ctx context.Context, record corememory.MemoryRecord) (bool, bool, error) {
