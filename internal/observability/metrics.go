@@ -39,6 +39,11 @@ type Snapshot struct {
 	RecallReturnedTotal     map[string]uint64
 	RecallSelectedTotal     map[string]uint64
 
+	// M8 working-memory lifecycle counters — one map entry per tenant_bucket
+	// (D7). Source: the session closer's WorkingLifecycleObservation.
+	WorkingExpiredTotal          map[string]uint64
+	WorkingDroppedBeforeUseTotal map[string]uint64
+
 	// TraceDropped is read from the injected source (sink-as-source-of-truth)
 	// so the gateway does not double-book this counter. Zero values when no
 	// source is wired.
@@ -81,6 +86,9 @@ type Metrics struct {
 	recallReturned     map[string]*atomic.Uint64
 	recallSelected     map[string]*atomic.Uint64
 
+	workingExpired          map[string]*atomic.Uint64
+	workingDroppedBeforeUse map[string]*atomic.Uint64
+
 	// traceDropSource returns the live drop counters from the trace sink. The
 	// default returns a zero snapshot so handler exposition lines remain
 	// present (and zero) even when no sink is wired.
@@ -100,7 +108,11 @@ func NewMetrics() *Metrics {
 		episodicDeleted:    make(map[string]*atomic.Uint64),
 		recallReturned:     make(map[string]*atomic.Uint64),
 		recallSelected:     make(map[string]*atomic.Uint64),
-		traceDropSource:    func() service.TraceDroppedSnapshot { return service.TraceDroppedSnapshot{} },
+
+		workingExpired:          make(map[string]*atomic.Uint64),
+		workingDroppedBeforeUse: make(map[string]*atomic.Uint64),
+
+		traceDropSource: func() service.TraceDroppedSnapshot { return service.TraceDroppedSnapshot{} },
 	}
 }
 
@@ -146,6 +158,12 @@ func (m *Metrics) AddRecallReturned(tenantBucket string, n uint64) {
 }
 func (m *Metrics) AddRecallSelected(tenantBucket string, n uint64) {
 	m.addBucket(m.recallSelected, tenantBucket, n)
+}
+func (m *Metrics) AddWorkingExpired(tenantBucket string, n uint64) {
+	m.addBucket(m.workingExpired, tenantBucket, n)
+}
+func (m *Metrics) AddWorkingDroppedBeforeUse(tenantBucket string, n uint64) {
+	m.addBucket(m.workingDroppedBeforeUse, tenantBucket, n)
 }
 
 // AddStorageCronFailure increments the operational counter for storage-bytes
@@ -229,6 +247,8 @@ func (m *Metrics) Snapshot() Snapshot {
 	snap.EpisodicDeletedTotal = copyBuckets(m.episodicDeleted)
 	snap.RecallReturnedTotal = copyBuckets(m.recallReturned)
 	snap.RecallSelectedTotal = copyBuckets(m.recallSelected)
+	snap.WorkingExpiredTotal = copyBuckets(m.workingExpired)
+	snap.WorkingDroppedBeforeUseTotal = copyBuckets(m.workingDroppedBeforeUse)
 	m.mu.RUnlock()
 
 	m.traceDropSourceMu.RLock()
@@ -264,6 +284,10 @@ func (m *Metrics) OutboxObserver() service.OutboxProjectionObserver {
 	return outboxMetricsObserver{metrics: m}
 }
 
+func (m *Metrics) WorkingLifecycleObserver() service.WorkingLifecycleObserver {
+	return workingLifecycleMetricsObserver{metrics: m}
+}
+
 func (m *Metrics) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		snap := m.Snapshot()
@@ -294,6 +318,8 @@ func (m *Metrics) Handler() http.Handler {
 		lines = appendBucketLines(lines, "episodic_deleted_total", snap.EpisodicDeletedTotal)
 		lines = appendBucketLines(lines, "recall_returned_total", snap.RecallReturnedTotal)
 		lines = appendBucketLines(lines, "recall_selected_total", snap.RecallSelectedTotal)
+		lines = appendBucketLines(lines, "working_expired_total", snap.WorkingExpiredTotal)
+		lines = appendBucketLines(lines, "working_dropped_before_use_total", snap.WorkingDroppedBeforeUseTotal)
 
 		// trace_dropped_total is read straight from the sink (source of truth).
 		// The 3 reason values are bounded at compile time; always emit all
@@ -413,6 +439,27 @@ func (o outboxMetricsObserver) ObserveProjection(_ context.Context, obs service.
 		o.metrics.AddEpisodicDisabled(service.TenantBucket(obs.TenantID))
 	case "memory_deleted":
 		o.metrics.AddEpisodicDeleted(service.TenantBucket(obs.TenantID))
+	}
+}
+
+// workingLifecycleMetricsObserver maps the session closer's lifecycle
+// observations onto the per-tenant_bucket working_* counters (D7). The
+// observation already carries the per-mode Expired / DroppedBeforeUse counts;
+// bucket the tenant_id at the call site to stay within the cardinality budget.
+type workingLifecycleMetricsObserver struct {
+	metrics *Metrics
+}
+
+func (o workingLifecycleMetricsObserver) ObserveWorkingLifecycle(_ context.Context, obs service.WorkingLifecycleObservation) {
+	if o.metrics == nil {
+		return
+	}
+	bucket := service.TenantBucket(obs.TenantID)
+	if obs.Expired > 0 {
+		o.metrics.AddWorkingExpired(bucket, uint64(obs.Expired))
+	}
+	if obs.DroppedBeforeUse > 0 {
+		o.metrics.AddWorkingDroppedBeforeUse(bucket, uint64(obs.DroppedBeforeUse))
 	}
 }
 
