@@ -268,6 +268,10 @@ func (s *Service) WriteMemory(ctx context.Context, authScope authz.Scope, req ht
 	if strings.TrimSpace(req.Record.Content) == "" {
 		return httpapi.WriteMemoryResponse{}, httpapi.ErrBadRequest("record.content is required", nil)
 	}
+	kind, err := corememory.NormalizeRecordKind(req.Record.Kind)
+	if err != nil {
+		return httpapi.WriteMemoryResponse{}, httpapi.ErrBadRequest("record.kind must be one of working, episodic, semantic", nil)
+	}
 
 	scope := mergeScope(authScope, req.Scope)
 	writeInput := corememory.WriteRecordInput{
@@ -279,7 +283,7 @@ func (s *Service) WriteMemory(ctx context.Context, authScope authz.Scope, req ht
 			UserID:     scope.UserID,
 			ProjectID:  scope.ProjectID,
 			SessionID:  scope.SessionID,
-			Kind:       req.Record.Kind,
+			Kind:       kind,
 			Source:     req.Record.Source,
 			Category:   req.Record.Category,
 			Content:    req.Record.Content,
