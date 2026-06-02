@@ -264,6 +264,63 @@ func TestDurableSessionCloser_PromoteAndExpirePromotesEligibleAndDeletesRemainde
 	if got := observer.events[0].DroppedBeforeUse; got != 1 {
 		t.Fatalf("DroppedBeforeUse = %d, want 1", got)
 	}
+	if got := observer.events[0].Promoted; got != 1 {
+		t.Fatalf("Promoted = %d, want 1 (D2)", got)
+	}
+}
+
+func TestDurableSessionCloser_PromoteOnlyCloseStillObservesLifecycle(t *testing.T) {
+	store := &fakeSessionWorkingStore{
+		records: []SessionWorkingRecord{
+			{
+				Record: corememory.MemoryRecord{
+					MemoryID:  "mem_only_promote",
+					TenantID:  "tenant-a",
+					UserID:    "user-a",
+					ProjectID: "project-a",
+					SessionID: "session-a",
+					Kind:      corememory.RecordKindWorking,
+					Source:    "user_saved",
+					Category:  "preference",
+					Version:   2,
+				},
+				LatestEventID: "evt_only",
+			},
+		},
+		dedupeResult: corememory.ResolveDedupeResult{
+			WinnerID: "mem_only_promote",
+			Action:   corememory.DedupeNoCollision,
+		},
+	}
+	observer := &fakeWorkingLifecycleObserver{}
+	closer := NewDurableSessionCloser(store, observer)
+
+	if err := closer.CloseSession(context.Background(), authz.Scope{
+		TenantID:  "tenant-a",
+		UserID:    "user-a",
+		ProjectID: "project-a",
+		SessionID: "session-a",
+	}, "promote_and_expire"); err != nil {
+		t.Fatalf("CloseSession() error = %v", err)
+	}
+	if len(store.promoteCalls) != 1 {
+		t.Fatalf("Promote calls = %d, want 1", len(store.promoteCalls))
+	}
+	if len(store.deleteCalls) != 0 {
+		t.Fatalf("DeleteRecord calls = %d, want 0 (promote-only)", len(store.deleteCalls))
+	}
+	// D2: a promote-only close (Expired=0, Dropped=0) must STILL emit an
+	// observation. Before D2 the observer fired only when expired/dropped > 0,
+	// so a promote-only close recorded nothing.
+	if len(observer.events) != 1 {
+		t.Fatalf("observer events = %d, want 1 (promote-only must still observe)", len(observer.events))
+	}
+	if got := observer.events[0].Promoted; got != 1 {
+		t.Fatalf("Promoted = %d, want 1", got)
+	}
+	if got := observer.events[0].Expired; got != 0 {
+		t.Fatalf("Expired = %d, want 0", got)
+	}
 }
 
 func TestDurableSessionCloser_IgnoresStaleMutations(t *testing.T) {

@@ -43,6 +43,7 @@ type Snapshot struct {
 	// (D7). Source: the session closer's WorkingLifecycleObservation.
 	WorkingExpiredTotal          map[string]uint64
 	WorkingDroppedBeforeUseTotal map[string]uint64
+	WorkingPromotedTotal         map[string]uint64
 
 	// TraceDropped is read from the injected source (sink-as-source-of-truth)
 	// so the gateway does not double-book this counter. Zero values when no
@@ -88,6 +89,7 @@ type Metrics struct {
 
 	workingExpired          map[string]*atomic.Uint64
 	workingDroppedBeforeUse map[string]*atomic.Uint64
+	workingPromoted         map[string]*atomic.Uint64
 
 	// traceDropSource returns the live drop counters from the trace sink. The
 	// default returns a zero snapshot so handler exposition lines remain
@@ -111,6 +113,7 @@ func NewMetrics() *Metrics {
 
 		workingExpired:          make(map[string]*atomic.Uint64),
 		workingDroppedBeforeUse: make(map[string]*atomic.Uint64),
+		workingPromoted:         make(map[string]*atomic.Uint64),
 
 		traceDropSource: func() service.TraceDroppedSnapshot { return service.TraceDroppedSnapshot{} },
 	}
@@ -164,6 +167,9 @@ func (m *Metrics) AddWorkingExpired(tenantBucket string, n uint64) {
 }
 func (m *Metrics) AddWorkingDroppedBeforeUse(tenantBucket string, n uint64) {
 	m.addBucket(m.workingDroppedBeforeUse, tenantBucket, n)
+}
+func (m *Metrics) AddWorkingPromoted(tenantBucket string, n uint64) {
+	m.addBucket(m.workingPromoted, tenantBucket, n)
 }
 
 // AddStorageCronFailure increments the operational counter for storage-bytes
@@ -249,6 +255,7 @@ func (m *Metrics) Snapshot() Snapshot {
 	snap.RecallSelectedTotal = copyBuckets(m.recallSelected)
 	snap.WorkingExpiredTotal = copyBuckets(m.workingExpired)
 	snap.WorkingDroppedBeforeUseTotal = copyBuckets(m.workingDroppedBeforeUse)
+	snap.WorkingPromotedTotal = copyBuckets(m.workingPromoted)
 	m.mu.RUnlock()
 
 	m.traceDropSourceMu.RLock()
@@ -320,6 +327,7 @@ func (m *Metrics) Handler() http.Handler {
 		lines = appendBucketLines(lines, "recall_selected_total", snap.RecallSelectedTotal)
 		lines = appendBucketLines(lines, "working_expired_total", snap.WorkingExpiredTotal)
 		lines = appendBucketLines(lines, "working_dropped_before_use_total", snap.WorkingDroppedBeforeUseTotal)
+		lines = appendBucketLines(lines, "working_promoted_total", snap.WorkingPromotedTotal)
 
 		// trace_dropped_total is read straight from the sink (source of truth).
 		// The 3 reason values are bounded at compile time; always emit all
@@ -460,6 +468,9 @@ func (o workingLifecycleMetricsObserver) ObserveWorkingLifecycle(_ context.Conte
 	}
 	if obs.DroppedBeforeUse > 0 {
 		o.metrics.AddWorkingDroppedBeforeUse(bucket, uint64(obs.DroppedBeforeUse))
+	}
+	if obs.Promoted > 0 {
+		o.metrics.AddWorkingPromoted(bucket, uint64(obs.Promoted))
 	}
 }
 

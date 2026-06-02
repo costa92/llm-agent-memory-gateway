@@ -27,6 +27,20 @@ func TestWorkingLifecycleObserver_IncrementsCountersByObservationCounts(t *testi
 	}
 }
 
+func TestWorkingLifecycleObserver_PromotedIncrementsWorkingPromoted(t *testing.T) {
+	m := NewMetrics()
+	obs := m.WorkingLifecycleObserver()
+	obs.ObserveWorkingLifecycle(context.Background(), service.WorkingLifecycleObservation{
+		TenantID: "tenant_a",
+		Mode:     "promote_and_expire",
+		Promoted: 4,
+	})
+	bucket := service.TenantBucket("tenant_a")
+	if got := m.Snapshot().WorkingPromotedTotal[bucket]; got != 4 {
+		t.Fatalf("working_promoted_total[%s] = %d, want 4", bucket, got)
+	}
+}
+
 func TestWorkingLifecycleObserver_ZeroCountsAreNoOp(t *testing.T) {
 	m := NewMetrics()
 	obs := m.WorkingLifecycleObserver()
