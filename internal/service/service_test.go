@@ -836,3 +836,94 @@ func TestGetMemoryItem_NotFound(t *testing.T) {
 		t.Fatalf("StatusCode(err) = %d, want 404", got)
 	}
 }
+
+// --- M8a: working-kind write-path validation ----------------------------
+
+// TestWriteMemory_AcceptsWorkingKind asserts kind="working" is accepted and
+// passed through to the backend unchanged.
+func TestWriteMemory_AcceptsWorkingKind(t *testing.T) {
+	backend := &fakeBackend{}
+	svc, err := New(backend, nil, nil, nil, Config{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = svc.WriteMemory(context.Background(), authz.Scope{
+		TenantID: "tenant-auth",
+		UserID:   "user-auth",
+	}, httpapi.WriteMemoryRequest{
+		IdempotencyKey: "idem_working_kind",
+		Record: httpapi.WriteRecordPayload{
+			Kind:     "working",
+			Source:   "agent_inferred",
+			Category: "session",
+			Content:  "transient note",
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteMemory() error = %v", err)
+	}
+	if got := backend.writeInput.Record.Kind; got != corememory.RecordKindWorking {
+		t.Fatalf("Record.Kind = %q, want %q", got, corememory.RecordKindWorking)
+	}
+}
+
+// TestWriteMemory_DefaultsBlankKindToEpisodic asserts a blank kind is
+// normalized to "episodic" before reaching the backend.
+func TestWriteMemory_DefaultsBlankKindToEpisodic(t *testing.T) {
+	backend := &fakeBackend{}
+	svc, err := New(backend, nil, nil, nil, Config{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = svc.WriteMemory(context.Background(), authz.Scope{
+		TenantID: "tenant-auth",
+		UserID:   "user-auth",
+	}, httpapi.WriteMemoryRequest{
+		IdempotencyKey: "idem_blank_kind",
+		Record: httpapi.WriteRecordPayload{
+			Source:   "user_saved",
+			Category: "project",
+			Content:  "remember this",
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteMemory() error = %v", err)
+	}
+	if got := backend.writeInput.Record.Kind; got != corememory.RecordKindEpisodic {
+		t.Fatalf("Record.Kind = %q, want %q (blank should default)", got, corememory.RecordKindEpisodic)
+	}
+}
+
+// TestWriteMemory_RejectsUnknownKind asserts an unrecognized kind is rejected
+// with a 400 before the backend is touched.
+func TestWriteMemory_RejectsUnknownKind(t *testing.T) {
+	backend := &fakeBackend{}
+	svc, err := New(backend, nil, nil, nil, Config{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = svc.WriteMemory(context.Background(), authz.Scope{
+		TenantID: "tenant-auth",
+		UserID:   "user-auth",
+	}, httpapi.WriteMemoryRequest{
+		IdempotencyKey: "idem_bad_kind",
+		Record: httpapi.WriteRecordPayload{
+			Kind:     "archive",
+			Source:   "user_saved",
+			Category: "project",
+			Content:  "bad kind",
+		},
+	})
+	if err == nil {
+		t.Fatal("WriteMemory() expected error for unknown kind, got nil")
+	}
+	if got := httpapi.StatusCode(err); got != 400 {
+		t.Fatalf("StatusCode(err) = %d, want 400", got)
+	}
+	if backend.writeCalls != 0 {
+		t.Fatalf("writeCalls = %d, want 0 (backend must not be called on bad kind)", backend.writeCalls)
+	}
+}
