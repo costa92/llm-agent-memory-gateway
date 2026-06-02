@@ -214,6 +214,25 @@ recallOrigin:
 		})
 	}
 
+	// Mark the returned records accessed (hit_count / last_access_at) when the
+	// backend supports it. Only the origin path reaches here — cache hits
+	// return above — so a cached response never re-marks access. Best-effort
+	// per backend capability; a marker error fails the recall like any other
+	// backend error.
+	if marker, ok := s.backend.(corememory.AccessMarker); ok && len(response.Hits) > 0 {
+		ids := make([]string, 0, len(response.Hits))
+		for _, hit := range response.Hits {
+			ids = append(ids, hit.MemoryID)
+		}
+		if err := marker.MarkAccess(ctx, corememory.MarkAccessInput{
+			TenantID:   scope.TenantID,
+			MemoryIDs:  ids,
+			AccessedAt: time.Now().UTC(),
+		}); err != nil {
+			return httpapi.RecallUnifiedResponse{}, translateBackendError(err)
+		}
+	}
+
 	// Observe after post-budget filtering so Returned/Selected carry the
 	// pre- and post-filter counts. Cache-hit paths above leave these zero,
 	// which the metrics observer treats as a no-op.
