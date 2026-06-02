@@ -12,8 +12,6 @@ import (
 	pgmemory "github.com/costa92/llm-agent-memory-postgres/postgres"
 )
 
-const sessionClosePromoteImportanceThreshold = 0.7
-
 type SessionWorkingRecord struct {
 	Record        corememory.MemoryRecord
 	LatestEventID string
@@ -89,13 +87,13 @@ func (c *DurableSessionCloser) CloseSession(ctx context.Context, scope authz.Sco
 
 func (c *DurableSessionCloser) promoteIfEligible(ctx context.Context, item SessionWorkingRecord) (bool, error) {
 	record := item.Record
-	if !shouldPromoteOnSessionClose(record) || strings.TrimSpace(item.LatestEventID) == "" {
+	if !corememory.PromotionEligible(record) || strings.TrimSpace(item.LatestEventID) == "" {
 		return false, nil
 	}
 
 	result, err := c.store.ResolveDedupe(ctx, corememory.ResolveDedupeInput{
 		TenantID:  record.TenantID,
-		DedupeKey: sessionCloseDedupeKey(record),
+		DedupeKey: corememory.DedupeKey(record),
 		Candidate: record,
 	})
 	if err != nil {
@@ -140,34 +138,6 @@ func (c *DurableSessionCloser) expireWorking(ctx context.Context, record coremem
 	return true, wasDroppedBeforeUse(record), nil
 }
 
-func shouldPromoteOnSessionClose(record corememory.MemoryRecord) bool {
-	switch record.Source {
-	case "user_saved":
-		return true
-	case "agent_inferred":
-		return record.Importance >= sessionClosePromoteImportanceThreshold
-	default:
-		return false
-	}
-}
-
-func sessionCloseDedupeKey(record corememory.MemoryRecord) string {
-	return sessionCloseHashParts(
-		record.TenantID,
-		record.UserID,
-		record.Category,
-		record.ProjectID,
-		sessionCloseNormalizedDedupeContent(record),
-	)
-}
-
-func sessionCloseNormalizedDedupeContent(record corememory.MemoryRecord) string {
-	if strings.TrimSpace(record.NormalizedContentHash) != "" {
-		return strings.TrimSpace(record.NormalizedContentHash)
-	}
-	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(record.Content))), " ")
-}
-
 func sessionClosePromotionKey(record corememory.MemoryRecord, eventID string) string {
 	return sessionCloseHashParts(record.TenantID, record.MemoryID, eventID, "session_close_promote")
 }
@@ -176,7 +146,7 @@ func sessionClosePromoteReason(record corememory.MemoryRecord) string {
 	if record.Source == "user_saved" {
 		return "session_close_user_saved_default"
 	}
-	if record.Source == "agent_inferred" && record.Importance >= sessionClosePromoteImportanceThreshold {
+	if record.Source == "agent_inferred" && record.Importance >= corememory.PromoteImportanceThreshold {
 		return "session_close_agent_inferred_importance_threshold"
 	}
 	return "session_close_default_rule"
