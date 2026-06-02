@@ -1,7 +1,7 @@
 entgo.io/ent v0.14.3 h1:wokAV/kIlH9TeklJWGGS7AYJdVckr0DloWjIcO9iIIQ=
 entgo.io/ent v0.14.3/go.mod h1:aDPE/OziPEu8+OWbzy4UlvWmD2/kbRuWfK2A40hcxJM=
-github.com/costa92/llm-agent-memory-contract v0.1.0 h1:tekvWqd/vPTyiU0hJezM47bhlMrP0VNvPTi8BBxpaZ4=
-github.com/costa92/llm-agent-memory-contract v0.1.0/go.mod h1:zwhC36/+dQSSHKLDncdlggVoIhJeZEC8uHtUV/M+J7g=
+github.com/costa92/llm-agent-memory-contract v0.2.0 h1:+t/+C3RvPbVeG4HX/mB8bNsCnq7qza5TdQ6ueircd48=
+github.com/costa92/llm-agent-memory-contract v0.2.0/go.mod h1:zwhC36/+dQSSHKLDncdlggVoIhJeZEC8uHtUV/M+J7g=
 github.com/costa92/llm-agent-memory-postgres v0.1.0 h1:n8oyQsygk/eqVH21hCFqb7Ep3NwfwASb/5Nfs5z4hAA=
 github.com/costa92/llm-agent-memory-postgres v0.1.0/go.mod h1:r1S0mCabElRAV3nv+PGmyfmPhHmeBdaKBj4rUUdjlLw=
 github.com/costa92/llm-agent-rag v1.9.0 h1:Y2HxhXkmu80kfCef/+eeoALQR9nLWtwNHIIonYmKkBg=
