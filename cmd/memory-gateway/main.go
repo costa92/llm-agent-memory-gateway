@@ -159,6 +159,30 @@ func buildHandler(ctx context.Context, logger *slog.Logger, cfg config.Config) (
 		return nil, nil, err
 	}
 
+	// Orphaned-session reaper (D6): periodically reclaim the working memory of
+	// sessions that went idle past SessionIdleTTL but were never explicitly
+	// closed. Keyed off the working records themselves (not session-state),
+	// since an active session is not registered unless the client heartbeats.
+	if cfg.SessionReaperEnabled {
+		reaper := service.NewSessionReaperCron(service.SessionReaperCronConfig{
+			ListIdle: buildIdleSessionsQuery(poolStorageQueryExecutor{pool: pool}, memoryRecordTableName),
+			Close:    svc.ReapIdleSession,
+			IdleTTL:  cfg.SessionIdleTTL,
+			Interval: cfg.SessionReaperInterval,
+			OnError: func(err error) {
+				logger.Warn("session reaper tick failed", "error", err)
+			},
+		})
+		reaperCtx, reaperCancel := context.WithCancel(context.Background())
+		go reaper.Run(reaperCtx)
+		cleanupFns = append(cleanupFns, func() {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), cfg.TraceSinkShutdownTimeout)
+			defer stopCancel()
+			reaper.Stop(stopCtx)
+			reaperCancel()
+		})
+	}
+
 	if cfg.VectorEnabled {
 		projector := buildVectorProjector(cfg, vectorSource, metrics)
 		if projector != nil {
@@ -437,6 +461,42 @@ func buildStorageMetricsQuery(exec storageQueryExecutor, memoryTable string) fun
 				// RAG vector store; see buildStorageMetricsQuery doc comment.
 				VectorBytes: 0,
 			})
+		}
+		return out, rows.Err()
+	}
+}
+
+// buildIdleSessionsQuery returns a closure that lists the scopes of sessions
+// whose newest working-record activity is older than cutoff — the orphaned
+// sessions the reaper (D6) reclaims. Activity is the most recent of
+// created_at / updated_at / last_access_at across the session's live working
+// records, so a session being written or recalled keeps advancing past the
+// cutoff and is left alone. Records with no session_id cannot be session-closed
+// and are excluded.
+func buildIdleSessionsQuery(exec storageQueryExecutor, memoryTable string) func(ctx context.Context, cutoff time.Time) ([]service.IdleSessionScope, error) {
+	return func(ctx context.Context, cutoff time.Time) ([]service.IdleSessionScope, error) {
+		sql := fmt.Sprintf(
+			`SELECT tenant_id, user_id, COALESCE(project_id, ''), session_id
+			FROM %s
+			WHERE kind = $1 AND deleted = FALSE AND disabled = FALSE
+			  AND session_id IS NOT NULL AND session_id <> ''
+			GROUP BY tenant_id, user_id, project_id, session_id
+			HAVING MAX(GREATEST(created_at, updated_at, COALESCE(last_access_at, created_at))) < $2`,
+			memoryTable,
+		)
+		rows, err := exec.Query(ctx, sql, corememory.RecordKindWorking, cutoff)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		var out []service.IdleSessionScope
+		for rows.Next() {
+			var s service.IdleSessionScope
+			if err := rows.Scan(&s.TenantID, &s.UserID, &s.ProjectID, &s.SessionID); err != nil {
+				return nil, err
+			}
+			out = append(out, s)
 		}
 		return out, rows.Err()
 	}

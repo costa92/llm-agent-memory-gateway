@@ -21,6 +21,7 @@ const (
 	defaultTraceSinkBatchSize  = 50
 	defaultTraceSinkShutdown   = 5 * time.Second
 	defaultStorageMetricsCycle = 5 * time.Minute
+	defaultSessionReaperCycle  = 5 * time.Minute
 	defaultRelayLeaseTTL       = 180 * time.Second
 	defaultRelayMaxAttempts    = 5
 	defaultRelayBatchSize      = 100
@@ -69,6 +70,18 @@ type Config struct {
 	// vector_storage_bytes_total. Default 5m.
 	StorageMetricsInterval time.Duration
 
+	// SessionReaperEnabled turns on the background orphaned-session reaper
+	// (D6), which reclaims the working memory of sessions that went idle
+	// beyond SessionIdleTTL but were never explicitly closed. Default true —
+	// without it, working records of abandoned sessions accumulate forever.
+	// Env `LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_ENABLED`.
+	SessionReaperEnabled bool
+
+	// SessionReaperInterval is how often the reaper scans for idle sessions.
+	// The idle cutoff itself is SessionIdleTTL. Default 5m. Env
+	// `LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_INTERVAL`.
+	SessionReaperInterval time.Duration
+
 	// TraceRetentionEnabled is a forward-looking flag (M8) for operator-side
 	// retention of memory_decision_trace rows. v1 (M7) leaves this off and
 	// treats retention as an operator obligation — see spec OD-5. Default
@@ -116,6 +129,8 @@ func LoadFromEnv() (Config, error) {
 		TraceSinkBatchSize:       defaultTraceSinkBatchSize,
 		TraceSinkShutdownTimeout: defaultTraceSinkShutdown,
 		StorageMetricsInterval:   defaultStorageMetricsCycle,
+		SessionReaperEnabled:     true,
+		SessionReaperInterval:    defaultSessionReaperCycle,
 		RelayLeaseTTL:            defaultRelayLeaseTTL,
 		RelayMaxAttempts:         defaultRelayMaxAttempts,
 		RelayBatchSize:           defaultRelayBatchSize,
@@ -265,6 +280,25 @@ func LoadFromEnv() (Config, error) {
 			return Config{}, errors.New("LLM_AGENT_MEMORY_GATEWAY_STORAGE_INTERVAL must be > 0")
 		}
 		cfg.StorageMetricsInterval = interval
+	}
+
+	if reaperEnabledValue := os.Getenv("LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_ENABLED"); reaperEnabledValue != "" {
+		reaperEnabled, err := strconv.ParseBool(reaperEnabledValue)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_ENABLED: %w", err)
+		}
+		cfg.SessionReaperEnabled = reaperEnabled
+	}
+
+	if reaperIntervalValue := os.Getenv("LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_INTERVAL"); reaperIntervalValue != "" {
+		interval, err := time.ParseDuration(reaperIntervalValue)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_INTERVAL: %w", err)
+		}
+		if interval <= 0 {
+			return Config{}, errors.New("LLM_AGENT_MEMORY_GATEWAY_SESSION_REAPER_INTERVAL must be > 0")
+		}
+		cfg.SessionReaperInterval = interval
 	}
 
 	if retentionValue := os.Getenv("LLM_AGENT_MEMORY_GATEWAY_TRACE_RETENTION"); retentionValue != "" {

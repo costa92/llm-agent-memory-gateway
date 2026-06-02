@@ -890,6 +890,23 @@ func (s *Service) ensureSessionOpen(ctx context.Context, scope authz.Scope) erro
 	return s.validateSessionState(state, ok, time.Now().UTC())
 }
 
+// ReapIdleSession closes an idle session discovered by the background reaper
+// (D6), reclaiming its working memory. It uses mode=expire_working: an
+// abandoned session is not a graceful close, so its working memory is expired
+// rather than promoted — consistent with the default close mode (D1). It is a
+// thin wrapper over CloseSession, so it inherits the idempotent-replay
+// short-circuit (an already-closed session is a no-op) and the promote/expire
+// idempotency guarantees.
+func (s *Service) ReapIdleSession(ctx context.Context, scope IdleSessionScope) error {
+	_, err := s.CloseSession(ctx, authz.Scope{
+		TenantID:  scope.TenantID,
+		UserID:    scope.UserID,
+		ProjectID: scope.ProjectID,
+		SessionID: scope.SessionID,
+	}, scope.SessionID, httpapi.SessionCloseRequest{Mode: "expire_working"})
+	return err
+}
+
 func (s *Service) isSessionExpired(state SessionState, now time.Time) bool {
 	if state.Status != "active" {
 		return false
