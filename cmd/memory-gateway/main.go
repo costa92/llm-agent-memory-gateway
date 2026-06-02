@@ -13,7 +13,6 @@ import (
 	"time"
 
 	corememory "github.com/costa92/llm-agent-memory-contract/contract"
-	"github.com/costa92/llm-agent-memory-gateway/internal/authz"
 	"github.com/costa92/llm-agent-memory-gateway/internal/config"
 	"github.com/costa92/llm-agent-memory-gateway/internal/observability"
 	"github.com/costa92/llm-agent-memory-gateway/internal/service"
@@ -137,7 +136,7 @@ func buildHandler(ctx context.Context, logger *slog.Logger, cfg config.Config) (
 	svc, err := service.New(
 		store,
 		buildRecallBackend(pool, store, cfg, vectorSource),
-		noOpSessionCloser{},
+		service.NewPostgresDurableSessionCloser(store, metrics.WorkingLifecycleObserver()),
 		observability.ComposeTraceEmitters(
 			slogTraceEmitter{logger: logger},
 			metrics.TraceEmitter(),
@@ -466,12 +465,6 @@ func runMigrations(ctx context.Context, migrator service.Migrator) error {
 		return nil
 	}
 	return migrator.Migrate(ctx)
-}
-
-type noOpSessionCloser struct{}
-
-func (noOpSessionCloser) CloseSession(context.Context, authz.Scope, string) error {
-	return nil
 }
 
 type slogTraceEmitter struct {

@@ -54,3 +54,15 @@ func convertSessionWorkingRecords(rows []pgmemory.SessionWorkingRecord) []Sessio
 }
 
 var _ sessionWorkingStore = (*postgresSessionWorkingStore)(nil)
+
+// NewPostgresDurableSessionCloser wires a DurableSessionCloser over the
+// production *pgmemory.Store, adapting it to the sessionWorkingStore interface.
+// It returns nil when store is nil so the caller can pass the result straight
+// to service.New (a nil SessionCloser disables session-close reclamation).
+func NewPostgresDurableSessionCloser(store *pgmemory.Store, observer WorkingLifecycleObserver) *DurableSessionCloser {
+	adapter := newPostgresSessionWorkingStore(store)
+	if adapter == nil {
+		return nil
+	}
+	return NewDurableSessionCloser(adapter, observer)
+}
